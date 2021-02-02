@@ -1,0 +1,118 @@
+kind: StorageClass
+apiVersion: storage.k8s.io/v1
+metadata:
+  namespace: kube-system
+  name: standard
+  annotations:
+    storageclass.kubernetes.io/is-default-class: "true"
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+
+provisioner: k8s.io/minikube-hostpath
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: storage-provisioner
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: storage-provisioner
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: system:persistent-volume-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: storage-provisioner
+    namespace: kube-system
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: Role
+metadata:
+  name: system:persistent-volume-provisioner
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - endpoints
+  verbs:
+  - watch
+  - create
+- apiGroups:
+  - ""
+  resourceNames:
+  - k8s.io-minikube-hostpath
+  resources:
+  - endpoints
+  verbs:
+  - get
+  - update
+  - create
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: RoleBinding
+metadata:
+  name: system:persistent-volume-provisioner
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: EnsureExists
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: Role
+  name: system:persistent-volume-provisioner
+subjects:
+  - kind: ServiceAccount
+    name: storage-provisioner
+    namespace: kube-system
+---
+apiVersion: v1
+kind: Endpoints
+metadata:
+  name: k8s.io-minikube-hostpath
+  namespace: kube-system
+  labels:
+    addonmanager.kubernetes.io/mode: Reconcile
+---
+apiVersion: v1
+kind: Daemonset
+metadata:
+  name: storage-provisioner
+  namespace: kube-system
+  labels:
+    integration-test: local-provisioner
+    addonmanager.kubernetes.io/mode: Reconcile
+spec:
+  matchLabels:
+    integration: local-provisioner
+  template: 
+    metadata: 
+      labels: 
+        integration: local-provisioner  
+    spec:
+      serviceAccountName: storage-provisioner
+      hostNetwork: true
+      containers:
+      - name: storage-provisioner
+        image: registry.k8s.asten.maq/asten/local-provisioner:1.0.0
+        command: ["/storage-provisioner"]
+        imagePullPolicy: IfNotPresent
+        volumeMounts:
+        - mountPath: /app
+          name: pv-dest
+
+     volumes:
+       - name: pv-dest
+         hostPath:
+           path: /Data
+           type: Directory
